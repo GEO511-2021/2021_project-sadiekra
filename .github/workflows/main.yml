@@ -11,11 +11,12 @@ jobs:
         run: |-
           Rscript -e "install.packages('remotes', repos = 'https://demo.rstudiopm.com/all/__linux__/bionic/latest')"
           Rscript -e "remotes::install_deps(dependencies = TRUE, repos = 'https://demo.rstudiopm.com/all/__linux__/bionic/latest')"
-          Rscript -e "install.packages(c('testthat','RCurl','questionr'))"
+          Rscript -e "install.packages(c('testthat','RCurl','questionr','tidygeocoder','stringi','spotifyr'))"
           Rscript -e "questionr::qscan(list.files(pattern='*.R',recursive=T), load = TRUE, detail = FALSE)"
       - name: Render Site
         env:
           ACTIONS_ALLOW_UNSECURE_COMMANDS: true
+      
         run: |-
           Rscript -e "rmarkdown::render_site(encoding = 'UTF-8')"
       - name: Deploy to GitHub Pages

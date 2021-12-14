@@ -1,105 +1,218 @@
 ---
-title: "My Final Project Template"
-author: Your name here
-subtitle: Subtitle here if desired
+title: "Visualizing the Music of Tom Petty and the Heartbreakers Using R"
+subtitle: GEO 511
+author: Sadie Kratt
+output:
+  html_document:
+    keep_md: true
 ---
 
 # Introduction
 
-[~ 200 words]
+Tom Petty is one of the greatest rock and roll artists of the 20th century. He tragically died in 2017 right after he finished up his final tour. Because Tom Petty is my favorite artist, I have decided to honor him by creating a data visualization of his work through R packages. Music and the information that comes with it is more accessible now than it ever has been. The medium for listening has changed over time from live to recorded, record to tape, and cd to iPod. Streaming services have now taken the lead, allowing users to pay a set amount of money for access to as much or as little music as they'd like at any time. Spotify has emerged as the leading streaming service with 172 million premium users as of mid 2021. Although we have moved away from hard copies, streaming allows artist data to be available and analyzed. Tom Petty and the Heartbreakers may not tour anymore, but their music can continue to present itself through listening, and now visualization.
 
-Clearly stated background and questions / hypotheses / problems being addressed. Sets up the analysis in an interesting and compelling way.
+Questions to be addressed:
+* How many studio albums did they release and when?
+* What is the danceability of his songs?
+* How positive are their songs?
+* What are the top 10 hits of their career?
+* Where has the band toured?
+* What are the top 5 places they have toured?
 
-# Materials and methods
+# Materials and Methods 
+Using the Spotify API, I will be accessing the spotify database to get information about the band. Because Tom Petty produced music both with the band, and as a solo artist, it's important to note that this is not a comprehensive analysis of his music. This is only a look into the music produced as a band. The artist that is being referred to within the database is "Tom Petty and the Heartbreakers." Solo work can be found using the artist name "Tom Petty." All needed artist data will be accessed through this API including the following variables and information: artist name, album name, release date, danceability, valence (positivity), and lyrics.
 
-[~ 200 words]
+The Spotifyr package allows you to access and analyze variables included in the API with specific functions. I will be using this package, along with the igraph and ggraph packages to answer the questions listed in the introduction. The graph packages allow users to create graphs from data frames and visualize it in many forms. The graphs that will specifically be shown are dendrograms because they can display a hierarchy of information. The hierarchy will be helpful in showing most often used lyrics per album. I will also be using ggplot2 to show the danceability and positivity of the band's music.
 
-Narrative: Clear narrative description of the data sources and methods. Includes data from at least two sources that were integrated / merged in R.
+The spatial component of this analysis will include mapping out the tour locations of the band over the span of their career. This will be used using a crowd sourced list of tour locations and dates found at [The Petty Archives] (https://www.thepettyarchives.com/archives/miscellany/performances/setlists). Using the leaflet package, I will be creating a map of everywhere he's been, along with a table of dates and how frequent each places was visited. Before creating the maps though, I will be geocoding the areas with the tidygeocoder package and "geocode" function.
 
-Code: The code associated with the project is well organized and easy to follow. Demonstrates mastery of R graphics and functions.
+Loading the Spotify API
 
-Data: The underlying data are publicly accessible via the web and downloaded/accessed within the Rmd script. If you want to use your own data, you must make it available on a website (e.g. Figshare) so that others are able to re-run your code.
-
-You can do bullets like this:
-
-* The first most important thing
-* The second most important thing
-* The third most important thing
-
-You can do numbers like this:
-
-1. The first most important thing
-2. The second most important thing
-3. The third most important thing
-
-See [http://rmarkdown.rstudio.com/](http://rmarkdown.rstudio.com/) for all the amazing things you can do.
-
-
-Here's my first code chunk.
 ```{r}
-1+2
+#Load Spotify package and get access
+library(spotifyr)
+Sys.setenv(SPOTIFY_CLIENT_ID = '097f7729a69e451da9624441ccdb54bd')
+Sys.setenv(SPOTIFY_CLIENT_SECRET = 'd1b68552cb2843929b58db9b964f87e9')
+
+access_token <- get_spotify_access_token()
 ```
 
-Load any required packages in a code chunk (you may need to install some packages):
+### Load Required Packages
 
 ```{r, message=F, warning=F}
 library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(purrr)
+library (tidygeocoder)
 library(leaflet)
 library(kableExtra)
+library(plotly)
 knitr::opts_chunk$set(cache=TRUE)  # cache the results for quick compiling
 ```
 
-## Download and clean all required data
+## Data Download and Preparation
 ```{r}
-n=20
-data=data.frame(x=runif(n,-180,180),
-                y=runif(n,-60,60),
-                size = runif(n, 5, 20),
-                category = factor(
-                  sample(letters[1:5], n, replace = TRUE)
-                  ),
-                value = rnorm(n))
+#load touring data
+touring_data <-read.csv('data/locations.csv')
+view(touring_data)
+
+#load spotify music data
+#Find artist id to access artist information
+tom_petty <- get_artist_audio_features("Tom Petty and the Heartbreakers")
+
+#Load album dataset
+petty_albums <- get_artist_albums(
+  id= "4tX2TplrkIP4v05BNC903e",
+  include_groups = c("album", "single", "appears_on", "compilation"),
+  market = NULL,
+  limit = 20,
+  offset = 0,
+  authorization = get_spotify_access_token(),
+  include_meta_info = FALSE
+)
 ```
 
 ```{r, results='asis'}
-data %>% 
-  slice(1:10) %>% #show only 1:n rows
-  kable(digits=2,align="c")%>% #make table and round to two digits
-  kable_styling(bootstrap_options = 
-                  c("striped", "hover", "condensed", "responsive")) #apply other formatting
+
+```
+## Band Specifics
+### Number of Albums Released 
+```{r}
+album_filter <- petty_albums%>%
+  filter(name!= c("Mojo Tour Edition", "Hard Promises (Reissue Remastered)", 
+                  "Damn The Torpedoes (Remastered)", 
+                   "Damn The Torpedoes (Deluxe Edition)"))%>%
+  arrange(desc(release_date))%>%
+  select(name, release_date)
+
+kable(album_filter, caption = "Studio Albums")%>%
+kable_styling(latex_options = "striped")%>%
+  scroll_box(width = "600px", height="350px")
+number_albums <- count(album_filter)
+number_albums
+```
+The band put out a total of 19 studio albums which includes live and deluxe versions. This does not include solo albums put out by Tom Petty, though they should be considered due to band members playing on those albums and fans associating both band and solo work together.
+
+### Danceability 
+```{r}
+var_width = 20
+
+petty_filter <-tom_petty%>%
+  select(album_name, danceability)%>%
+  dplyr::mutate(album_wrap=str_wrap(album_name, width = var_width))
+
+
+album_dance <- ggplot(petty_filter, aes(x=danceability, fill=album_wrap,
+                      text = paste(album_name))) +
+  geom_density(alpha=0.7, color=NA) +
+  ggtitle("Danceability by Album") +
+  labs(x="Danceability", y="Density") +
+  guides(fill=guide_legend(title="Album Name")) +
+  theme_minimal() +
+    theme(legend.position="none",
+          strip.text.x = element_text(size = 8)) +
+    facet_wrap(~ album_wrap)
+album_dance
 ```
 
-Add any additional processing steps here.
+"Danceability describes how suitable a track is for dancing based on a combination of musical elements including tempo, rhythm stability, beat strength, and overall regularity. A value of 0.0 is least danceable and 1.0 is most danceable." (Plantinga, 2018). This one surprised me most because I expected "Damn The Torpedoes" to have the highest danceability. This album was a breakthrough album with many upbeat, well-known songs. But looking at this, it seems like "She's the One" and "Hypnotic Eye" have the highest throughout their albums. This reinforces the idea that there is more to songs than just being a fun or upbeat sound.
 
-# Results
+### Valence
+```{r}
+#Positivity of songs
+petty_valence <- tom_petty%>%
+  arrange(-valence) %>% 
+  select(.data$track_name, .data$valence) %>%
+  distinct()%>%
+  head(10)
+petty_valence
 
-[~200 words]
-
-Tables and figures (maps and other graphics) are carefully planned to convey the results of your analysis. Intense exploration and evidence of many trials and failures. The author looked at the data in many different ways before coming to the final presentation of the data.
-
-Show tables, plots, etc. and describe them.
-
-```{r, fig.width=6, fig.height=3, fig.cap="Map of completely random data"}
-m <- leaflet(data) %>% 
-  addTiles() %>% 
-  addCircleMarkers(~x, ~y, radius = ~size,color = ~as.factor(category)) %>% 
-  addPopups(~x[2], ~y[2], "Random popup")
-m  # a map with the default OSM tile layer
+valence_plot <- ggplot(petty_valence, aes(x = reorder(track_name, -valence), 
+                                          valence,  text = paste(valence))) +
+  geom_point(color="#7625be") +
+  theme(axis.text.x = element_text(color="grey30", 
+                                       size=8, angle=40),
+            axis.text.y = element_text(face="bold", color="grey30", 
+                                       size=10,),
+        axis.title = element_text(color = "#7625be", face = "bold")) +
+  ggtitle("Top 10 Positive Songs") +
+  xlab("Track Name") +
+  ylab("Valence")
+ggplotly(valence_plot, tooltip=c("text"))
 ```
+Valence is "a measure from 0.0 to 1.0 describing the musical positiveness conveyed by a track. Tracks with high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry)." (Plantinga, 2018) These results are not surprising because they all are upbeat tempos with generally happy lyrics.
 
+### Top 10 Hits
+```{r}
+top_ten <- get_artist_top_tracks(
+  id= "4tX2TplrkIP4v05BNC903e",
+  market = "US",
+  authorization = get_spotify_access_token(),
+  include_meta_info = FALSE
+)%>%
+  select(name, album.name)
+colnames(top_ten) = c("Song", "Album")
+top_ten
+```
 
 ```{r}
-data %>% 
-  ggplot(aes(x=x,y=y,col=category))+
-  geom_point()
+
+kable(top_ten, caption = "Top 10 Tracks") %>%
+        row_spec(c(1,3,5,7,9),background = "#Cab5dc")%>%
+        kable_styling(latex_options = "striped")
 ```
+The top 10 tracks to be found are what was expected. All songs except for "Christmas All Over Again" appear on the Greatest Hits album and were released as singles for their respective albums. 
+
+## Where Did They Tour?
+
+### Geocode locations
+```{r, eval=FALSE}
+touring_geo <- touring_data %>% geocode (City, method = 'osm', lat = latitude , long = longitude)%>% 
+  write_csv(file="data/touring_geo.csv")
+```
+
+```{r}
+touring_geo=read_csv("data/touring_geo.csv")
+```
+### Mapping Locations with Leaflet
+```{r}
+map_tour <- leaflet(touring_geo) %>%
+  addProviderTiles("CartoDB.Positron") %>%
+  addCircleMarkers(radius = 1, popup = touring_geo$City,
+                   color = "#7625be", clusterOptions = markerClusterOptions())
+map_tour
+```
+
+## Where are the top 5 locations visited while touring?
+```{r}
+top_5<-touring_geo%>%
+  filter(City != "NA")%>%
+  count(City)%>%
+  arrange(desc(n))
+top_5
+```
+
+```{r}
+kable(top_5, caption = "Top 5 Touring Locations") %>%
+  kable_styling(latex_options = "striped")%>%
+  row_spec(1:5, background = "#Cab5dc")%>%
+  scroll_box(width = "600px", height="350px")
+```
+The top touring locations were found to be NYC, San Francisco, Philadelphia, West Hollywood, and London. One of the interesting parts of this information is that the two top cities were visited twice as many times as the next three. This would make sense though due to New York's large population and many concert venues. As for California, the band became what they were there after relocating from Gainsville, Florida. You can hear this place influence in many of their songs, and now see that they always toured back home.
 
 # Conclusions
 
-[~200 words]
-
-Clear summary adequately describing the results and putting them in context. Discussion of further questions and ways to continue investigation.
+The Spotify API allows for a better understanding of the artists we love in more ways than just listening. By using R, I was able to gain a new understanding of my favorite artist and learn ways to interpret data. Visualizing the places Tom Petty toured allows fans to see how far his influence reached. Making playlists for new listeners also becomes easier by assessing what kind of listener they are. If they like hits that make you happy, I would recommend them to listen to "Don't do me Like That." One of the drawbacks of this project though is the singularity of artists. Tom Petty, and many other artists, put out music under a solo label in addition to their band. Unless you merge the data frames, you only get a view of part of their work. In order to get a full look at Tom's music, you would have to merge his solo work, band work, and "Mudcrutch" work. Overall though, this API is very useful and very unique to work with. 
 
 # References
 
-All sources are cited in a consistent manner
+*Aimee, W. (n.d.). Tour Dates and Setlists - The Petty Archives. Retrieved December 9, 2021, from www.thepettyarchives.com website: https://www.thepettyarchives.com/archives/miscellany/performances/setlists
+*charlie86. (2021, December 2). spotifyr. Retrieved December 9, 2021, from GitHub website: https://github.com/charlie86/spotifyr
+*DataCamp. (n.d.). spotifyr package - RDocumentation. Retrieved December 9, 2021, from www.rdocumentation.org website: https://www.rdocumentation.org/packages/spotifyr/versions/2.2.1
+*Holtz, Y. (2018). Dendrogram customization with R and ggraph. Retrieved December 9, 2021, from www.r-graph-gallery.com website: https://www.r-graph-gallery.com/335-custom-ggraph-dendrogram.html
+*Pedersen, T. L. (2021, December 2). ggraph. Retrieved December 9, 2021, from GitHub website: https://github.com/thomasp85/ggraph
+*Plantinga, B. (2018, April 29). What do Spotify’s audio features tell us about this year’s Eurovision Song Contest? Retrieved from Medium website: https://medium.com/@boplantinga/what-do-spotifys-audio-features-tell-us-about-this-year-s-eurovision-song-contest-66ad188e112a
+*Statista. (2018). Spotify users - subscribers in 2018 | Statista. Retrieved from Statista website: https://www.statista.com/statistics/244995/number-of-paying-spotify-subscribers/
+
